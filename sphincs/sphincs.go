@@ -2,6 +2,7 @@ package sphincs
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math"
 
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
@@ -50,6 +51,12 @@ func Spx_keygen(params *parameters.Parameters) (*SPHINCS_SK, *SPHINCS_PK) {
 
 	PKseed := make([]byte, params.N)
 	rand.Read(PKseed)
+
+	fmt.Println("Waring, using set seed pk and sks")
+
+	SKseed = []byte{98, 7, 181, 163, 174, 11, 8, 141, 215, 234, 95, 11, 247, 30, 142, 217, 195, 61, 180, 170, 46, 1, 233, 140, 201, 77, 210, 201, 62, 157, 239, 126}
+	SKprf = []byte{67, 127, 138, 62, 195, 247, 131, 216, 143, 83, 67, 55, 247, 170, 198, 54, 241, 202, 37, 112, 89, 185, 192, 187, 101, 115, 149, 255, 78, 141, 193, 86}
+	PKseed = []byte{69, 133, 108, 254, 185, 201, 109, 59, 125, 206, 244, 15, 7, 215, 156, 160, 62, 5, 166, 233, 114, 170, 55, 172, 141, 119, 125, 106, 44, 251, 254, 99}
 
 	PKroot := hypertree.Ht_PKgen(params, SKseed, PKseed)
 

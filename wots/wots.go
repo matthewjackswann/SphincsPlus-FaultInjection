@@ -8,6 +8,10 @@ import (
 	"github.com/kasperdi/SPHINCSPLUS-golang/util"
 )
 
+func Chain(params *parameters.Parameters, X []byte, startIndex int, steps int, PKseed []byte, adrs *address.ADRS) []byte {
+	return chain(params, X, startIndex, steps, PKseed, adrs)
+}
+
 // Calculates the value of F iterated s times on X
 func chain(params *parameters.Parameters, X []byte, startIndex int, steps int, PKseed []byte, adrs *address.ADRS) []byte {
 	if steps == 0 {

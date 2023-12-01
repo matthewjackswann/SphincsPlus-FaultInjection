@@ -1,7 +1,6 @@
 package hypertree
 
 import (
-	"fmt"
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
 	"github.com/kasperdi/SPHINCSPLUS-golang/parameters"
 	"github.com/kasperdi/SPHINCSPLUS-golang/xmss"
@@ -31,7 +30,6 @@ func Ht_sign_fault(params *parameters.Parameters, M []byte, SKseed []byte, PKsee
 
 		// cause fault in second to last tree by mutating a bit of SIG_tmp
 		if j == params.D-2 {
-			fmt.Println("Fault")
 			fault(SIG_tmp)
 		}
 
@@ -45,8 +43,8 @@ func Ht_sign_fault(params *parameters.Parameters, M []byte, SKseed []byte, PKsee
 }
 
 func fault(SIG_tmp *xmss.XMSSSignature) {
-	mathrand.Seed(0)
-	fmt.Println("Seeded fault!!")
+	//mathrand.Seed(0)
+	//fmt.Println("Seeded fault!!")
 	targetBit := mathrand.Intn(8 * (len(SIG_tmp.AUTH) + len(SIG_tmp.WotsSignature)))
 	if targetBit >= 8*len(SIG_tmp.AUTH) {
 		// flip (targetBit - 8*len(SIG_tmp.AUTH)) bit of SIG_tmp.WotsSignature

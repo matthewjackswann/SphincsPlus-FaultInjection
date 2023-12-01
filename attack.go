@@ -14,7 +14,7 @@ import (
 
 func main() {
 	// sphincs+ parameters
-	params := parameters.MakeSphincsPlusSHA256256fRobust(false)
+	params := parameters.MakeSphincsPlusSHA256256fRobust(true)
 
 	// create message to sign
 	message := make([]byte, params.N)
@@ -25,7 +25,8 @@ func main() {
 	message = []byte{253, 233, 0, 195, 129, 64, 198, 174, 137, 13, 63, 86, 230, 21, 9, 200, 239, 40, 249, 191, 97, 75, 215, 198, 105, 39, 179, 105, 195, 229, 165, 189}
 
 	// key gen, sk is only used for signing
-	pk, oracleInput, oracleResponse := createSigningOracle(params)
+	pk, oracleInput, oracleResponse, oracleInputFaulty, oracleResponseFaulty := createSigningOracle(params)
+	//pk, oracleInput, oracleResponse, _, _ := createSigningOracle(params)
 	// sign correctly
 	oracleInput <- message
 
@@ -37,32 +38,53 @@ func main() {
 	}
 
 	ots_pk := getWOTSPKFromMessageAndSignature(params, ots_sig, ots_msg, pk.PKseed)
-	fmt.Println(ots_msg)
-	fmt.Println(ots_sig)
-	fmt.Println(ots_pk)
+
+	for i := 0; i < 1; i++ {
+		oracleInputFaulty <- message
+		badSig := <-oracleResponseFaulty
+		//success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
+		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
+		if success {
+			fmt.Println("YAY!!!")
+			fmt.Println(faultyMessage)
+		}
+		fmt.Print(i)
+		fmt.Print(",")
+	}
 
 	oracleInput <- nil // stop oracle thread
 }
 
-func createSigningOracle(params *parameters.Parameters) (*sphincs.SPHINCS_PK, chan []byte, chan *sphincs.SPHINCS_SIG) {
+func createSigningOracle(params *parameters.Parameters) (*sphincs.SPHINCS_PK, chan []byte, chan *sphincs.SPHINCS_SIG, chan []byte, chan *sphincs.SPHINCS_SIG) {
 	sk, pk := sphincs.Spx_keygen(params)
-	messageChan := make(chan []byte)
-	signatureChan := make(chan *sphincs.SPHINCS_SIG)
+	messageChan := make(chan []byte, 1)
+	signatureChan := make(chan *sphincs.SPHINCS_SIG, 1)
+
+	messageChanFault := make(chan []byte, 1)
+	signatureChanFault := make(chan *sphincs.SPHINCS_SIG, 1)
 
 	go func() {
 		for {
-			m := <-messageChan
-			if m == nil {
-				return // stop
+			select {
+			case m := <-messageChan:
+				if m == nil {
+					return // stop
+				}
+				signatureChan <- sphincs.Spx_sign(params, m, sk)
+			case m := <-messageChanFault:
+				if m == nil {
+					return // stop
+				}
+				signatureChanFault <- sphincs.Spx_sign_fault(params, m, sk)
 			}
-			signatureChan <- sphincs.Spx_sign(params, m, sk)
+
 		}
 	}()
 
-	return pk, messageChan, signatureChan
+	return pk, messageChan, signatureChan, messageChanFault, signatureChanFault
 }
 
-func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte) []int {
+func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte) (bool, []int) {
 	// repeated hashes on sig should be equal to publicKey
 	// number of hashes correspond to m (inc checksum)
 	m := make([]int, 0)
@@ -78,12 +100,12 @@ func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.
 				break
 			}
 			if c == params.W-1 {
-				panic("Noooooo")
+				return false, nil
 			}
 		}
 	}
 
-	return m
+	return true, m
 }
 
 // Finds pk from signature, for verification

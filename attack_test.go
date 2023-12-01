@@ -25,7 +25,10 @@ func TestMessageRetrieval(t *testing.T) {
 	params := parameters.MakeSphincsPlusSHA256256fRobust(false)
 	_, pk := sphincs.Spx_keygen(params)
 
-	message := getWOTSMessageFromSignatureAndPK(WOTSTestSig, WOTSPublicKey, params, pk.PKseed)
+	success, message := getWOTSMessageFromSignatureAndPK(WOTSTestSig, WOTSPublicKey, params, pk.PKseed)
+	if !success {
+		t.Fatal("Couldn't get message from sig and pk")
+	}
 
 	if !slices.Equal(util.Base_w(WOTSTestMsg, params.W, params.Len1), message[:params.Len1]) {
 		t.Error("Retrieved message should be the test message")

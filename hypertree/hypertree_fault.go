@@ -46,6 +46,7 @@ func Ht_sign_fault(params *parameters.Parameters, M []byte, SKseed []byte, PKsee
 
 func fault(SIG_tmp *xmss.XMSSSignature) {
 	mathrand.Seed(0)
+	fmt.Println("Seeded fault!!")
 	targetBit := mathrand.Intn(8 * (len(SIG_tmp.AUTH) + len(SIG_tmp.WotsSignature)))
 	if targetBit >= 8*len(SIG_tmp.AUTH) {
 		// flip (targetBit - 8*len(SIG_tmp.AUTH)) bit of SIG_tmp.WotsSignature

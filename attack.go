@@ -24,7 +24,6 @@ func main() {
 	}
 	message = []byte{253, 233, 0, 195, 129, 64, 198, 174, 137, 13, 63, 86, 230, 21, 9, 200, 239, 40, 249, 191, 97, 75, 215, 198, 105, 39, 179, 105, 195, 229, 165, 189}
 
-	// key gen, sk is only used for signing
 	pk, oracleInput, oracleResponse, oracleInputFaulty, oracleResponseFaulty := createSigningOracle(params)
 	//pk, oracleInput, oracleResponse, _, _ := createSigningOracle(params)
 	// sign correctly
@@ -37,19 +36,22 @@ func main() {
 		panic("Good signature didn't sign :(")
 	}
 
+	fmt.Println(util.Base_w(ots_msg, params.W, params.Len1))
+	fmt.Println("Signed")
+
 	ots_pk := getWOTSPKFromMessageAndSignature(params, ots_sig, ots_msg, pk.PKseed)
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 100; i++ {
 		oracleInputFaulty <- message
 		badSig := <-oracleResponseFaulty
-		//success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
 		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
+		//success, _ := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
 		if success {
 			fmt.Println("YAY!!!")
 			fmt.Println(faultyMessage)
 		}
-		fmt.Print(i)
-		fmt.Print(",")
+		//fmt.Print(i)
+		//fmt.Print(",")
 	}
 
 	oracleInput <- nil // stop oracle thread

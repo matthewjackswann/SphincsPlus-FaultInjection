@@ -18,7 +18,7 @@ Test vectors for WOTS<sup>+</sup>, FORS, and SPHINCS<sup>+</sup> can be found in
 Faults are made by randomly flipping up to 64 bits in the 2nd to last signature while constructing the hyper tree. To better replicate the fault in the paper, the layer in the tree could be randomised; the same attack would still work by only using signatures from the correct layer, but this would be slower for no good reason, so I didn't do it.
 
 ## Attack
-The attack works be re-using a winternitz one time signature (WOTS). By signing the same message there is a $\frac{1,16}$ chance that the same $(pk, sk)$ pair will be used for the last layer. If the message a fault occurs then a different message will be signed, breaking the one time usage security requirement.
+The attack works be re-using a winternitz one time signature (WOTS). By signing the same message there is a $\frac{1}{16}$ chance that the same $(pk, sk)$ pair will be used for the last layer. If the message a fault occurs then a different message will be signed, breaking the one time usage security requirement.
 
 - First a message is signed without a fault. This allows us to calculate the pk used for the message
 - We then repeatability faultily sign messages and see if we can reverse the message from the signature and $sk$.

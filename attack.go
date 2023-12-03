@@ -40,6 +40,7 @@ func main() {
 	ots_pk := getWOTSPKFromMessageAndSignature(params, ots_sig, ots_msg, pk.PKseed, tree)
 
 	fmt.Println("Signed message")
+	fmt.Println("Signing faulty messages. Press enter to stop")
 
 	// maintain list of the fewest times hashed sk and how many times it was hashed
 	smallestSignature := make([]byte, len(ots_sig))
@@ -51,7 +52,7 @@ func main() {
 	for searching { // keep looping until the user presses enter
 		select {
 		case <-userInput:
-			searching = false
+			searching = false // if user has entered input stop
 		default:
 			// sign the same message but cause a fault
 			oracleInputFaulty <- message

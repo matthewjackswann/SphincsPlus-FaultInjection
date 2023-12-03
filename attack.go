@@ -61,20 +61,31 @@ func main() {
 			// try to recreate message from signature, with h =64 and d = 8 this has a 1/16 chance of success
 			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, ots_pk, params, pk.PKseed, tree)
 			if success { // message was signed with ots_pk
+				smaller := false
 				for block := 0; block < params.Len; block++ {
 					// if a sig with fewer hashes of a sk if found, update the smallest signature
 					if hashCount[block] > faultyMessage[block] {
+						smaller = true
 						copy(smallestSignature[block*params.N:(block+1)*params.N], badWotsSig[block*params.N:(block+1)*params.N])
 						hashCount[block] = faultyMessage[block]
 					}
 				}
-				fmt.Println(hashCount)
+				if smaller {
+					fmt.Print("New smallest signature: ")
+					fmt.Println(hashCount)
+				} else {
+					fmt.Println("New non-smaller signature found")
+				}
 			}
 		}
 	}
 
 	oracleInput <- nil                 // stop oracle thread
 	time.Sleep(100 * time.Millisecond) // wait for oracle to finish
+
+	fmt.Print("We can now sign anything given each block of the message is strictly greater than: ")
+	fmt.Println(hashCount)
+	fmt.Printf("The corresponding smallest signature is %x\n", smallestSignature)
 }
 
 func createSigningOracle(params *parameters.Parameters) (*sphincs.SPHINCS_PK, chan []byte, chan *sphincs.SPHINCS_SIG, chan []byte, chan *sphincs.SPHINCS_SIG) {

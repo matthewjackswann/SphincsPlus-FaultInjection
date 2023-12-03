@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"github.com/kasperdi/SPHINCSPLUS-golang/util"
 	"github.com/kasperdi/SPHINCSPLUS-golang/wots"
 	"math"
+	"os"
+	"time"
 )
 
 func main() {
@@ -37,50 +40,90 @@ func main() {
 	ots_pk := getWOTSPKFromMessageAndSignature(params, ots_sig, ots_msg, pk.PKseed, tree)
 
 	fmt.Println("Signed message")
-	fmt.Printf("Public key used for WOTS in last layer: %x\n", ots_pk)
 
-	for i := 0; i < 100; i++ {
-		// sign the same message but cause a fault
-		oracleInputFaulty <- message
-		badSig := <-oracleResponseFaulty
+	// maintain list of the fewest times hashed sk and how many times it was hashed
+	smallestSignature := make([]byte, len(ots_sig))
+	copy(smallestSignature, ots_sig)
+	hashCount := msgToBaseW(params, message)
 
-		// try to recreate message from signature, with h =64 and d = 8 this has a 1/16 chance of success
-		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed, tree)
-		if success { // message was signed with ots_pk
-			fmt.Println(faultyMessage)
+	userInput := waitForUserInput()
+	searching := true
+	for searching { // keep looping until the user presses enter
+		select {
+		case <-userInput:
+			searching = false
+		default:
+			// sign the same message but cause a fault
+			oracleInputFaulty <- message
+			badSig := <-oracleResponseFaulty
+			badWotsSig := badSig.SIG_HT.GetXMSSSignature(16).WotsSignature
+
+			// try to recreate message from signature, with h =64 and d = 8 this has a 1/16 chance of success
+			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, ots_pk, params, pk.PKseed, tree)
+			if success { // message was signed with ots_pk
+				for block := 0; block < params.Len; block++ {
+					// if a sig with fewer hashes of a sk if found, update the smallest signature
+					if hashCount[block] > faultyMessage[block] {
+						copy(smallestSignature[block*params.N:(block+1)*params.N], badWotsSig[block*params.N:(block+1)*params.N])
+						hashCount[block] = faultyMessage[block]
+					}
+				}
+				fmt.Println(hashCount)
+			}
 		}
 	}
 
-	oracleInput <- nil // stop oracle thread
+	oracleInput <- nil                 // stop oracle thread
+	time.Sleep(100 * time.Millisecond) // wait for oracle to finish
 }
 
 func createSigningOracle(params *parameters.Parameters) (*sphincs.SPHINCS_PK, chan []byte, chan *sphincs.SPHINCS_SIG, chan []byte, chan *sphincs.SPHINCS_SIG) {
 	sk, pk := sphincs.Spx_keygen(params)
-	messageChan := make(chan []byte, 1)
-	signatureChan := make(chan *sphincs.SPHINCS_SIG, 1)
+	messageChan := make(chan []byte)
+	signatureChan := make(chan *sphincs.SPHINCS_SIG)
 
-	messageChanFault := make(chan []byte, 1)
-	signatureChanFault := make(chan *sphincs.SPHINCS_SIG, 1)
+	messageChanFault := make(chan []byte)
+	signatureChanFault := make(chan *sphincs.SPHINCS_SIG)
+
+	validSigns := 0
+	faultySigns := 0
 
 	go func() {
-		for {
+		responding := true
+		for responding {
 			select {
 			case m := <-messageChan:
 				if m == nil {
-					return // stop
+					responding = false
+					break
 				}
-				signatureChan <- sphincs.Spx_sign(params, m, sk)
+				validSigns += 1
+				signatureChan <- sphincs.Spx_sign_debug(params, m, sk)
 			case m := <-messageChanFault:
 				if m == nil {
-					return // stop
+					responding = false
+					break
 				}
+				faultySigns += 1
 				signatureChanFault <- sphincs.Spx_sign_fault(params, m, sk)
 			}
-
 		}
+		fmt.Println("Oracle stopping")
+		fmt.Printf("Signed correctly: %d\n", validSigns)
+		fmt.Printf("Signed with fault: %d\n", faultySigns)
 	}()
 
 	return pk, messageChan, signatureChan, messageChanFault, signatureChanFault
+}
+
+func waitForUserInput() chan interface{} {
+	userInput := make(chan interface{})
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		userInput <- new(interface{})
+	}()
+	return userInput
 }
 
 func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte, tree uint64) (bool, []int) {
@@ -116,8 +159,6 @@ func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.
 
 // Finds pk from signature, for verification
 func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature []byte, message []byte, PKseed []byte, tree uint64) []byte {
-	csum := 0
-
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
 	idx_leaf := 0
@@ -128,23 +169,29 @@ func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature [
 	adrs.SetKeyPairAddress(idx_leaf)
 
 	// convert message to base w
+	msg := msgToBaseW(params, message)
+
+	sig := make([]byte, params.Len*params.N)
+
+	for i := 0; i < params.Len; i++ {
+		adrs.SetChainAddress(i)
+		copy(sig[i*params.N:], wots.Chain(params, signature[i*params.N:(i+1)*params.N], msg[i], params.W-1-msg[i], PKseed, adrs))
+	}
+
+	return sig
+}
+
+func msgToBaseW(params *parameters.Parameters, message []byte) []int {
 	msg := util.Base_w(message, params.W, params.Len1)
 
 	// compute checksum
+	csum := 0
 	for i := 0; i < params.Len1; i++ {
 		csum = csum + params.W - 1 - msg[i]
 	}
 
 	csum = csum << (8 - ((params.Len2 * int(math.Log2(float64(params.W)))) % 8))
-	len2_bytes := int(math.Ceil((float64(params.Len2) * math.Log2(float64(params.W))) / 8))
-	msg = append(msg, util.Base_w(util.ToByte(uint64(csum), len2_bytes), params.W, params.Len2)...)
-
-	tmp := make([]byte, params.Len*params.N)
-
-	for i := 0; i < params.Len; i++ {
-		adrs.SetChainAddress(i)
-		copy(tmp[i*params.N:], wots.Chain(params, signature[i*params.N:(i+1)*params.N], msg[i], params.W-1-msg[i], PKseed, adrs))
-	}
-
-	return tmp
+	len2Bytes := int(math.Ceil((float64(params.Len2) * math.Log2(float64(params.W))) / 8))
+	msg = append(msg, util.Base_w(util.ToByte(uint64(csum), len2Bytes), params.W, params.Len2)...)
+	return msg
 }

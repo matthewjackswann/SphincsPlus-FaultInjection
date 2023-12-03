@@ -28,7 +28,7 @@ func Ht_sign_fault(params *parameters.Parameters, M []byte, SKseed []byte, PKsee
 
 		SIG_tmp = xmss.Xmss_sign(params, root, SKseed, idx_leaf, PKseed, adrs)
 
-		// cause fault in second to last tree by mutating a bit of SIG_tmp
+		// cause fault in second to last tree by mutating the bits of SIG_tmp
 		if j == params.D-2 {
 			fault(SIG_tmp)
 		}

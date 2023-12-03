@@ -16,42 +16,39 @@ func main() {
 	// sphincs+ parameters
 	params := parameters.MakeSphincsPlusSHA256256fRobust(true)
 
-	// create message to sign
+	// create random message to sign
 	message := make([]byte, params.N)
 	_, err := rand.Read(message)
 	if err != nil {
 		panic(err)
 	}
-	message = []byte{253, 233, 0, 195, 129, 64, 198, 174, 137, 13, 63, 86, 230, 21, 9, 200, 239, 40, 249, 191, 97, 75, 215, 198, 105, 39, 179, 105, 195, 229, 165, 189}
 
+	// createSigningOracle returns only the public key and channels for messages and signatures
 	pk, oracleInput, oracleResponse, oracleInputFaulty, oracleResponseFaulty := createSigningOracle(params)
-	//pk, oracleInput, oracleResponse, _, _ := createSigningOracle(params)
+
 	// sign correctly
 	oracleInput <- message
-
 	goodSignature := <-oracleResponse
-
-	success, ots_msg, ots_sig := sphincs.Spx_verify_get_msg_sig(params, message, goodSignature, pk)
+	success, ots_msg, ots_sig, tree := sphincs.Spx_verify_get_msg_sig_tree(params, message, goodSignature, pk)
 	if !success {
 		panic("Good signature didn't sign :(")
 	}
 
-	fmt.Println(util.Base_w(ots_msg, params.W, params.Len1))
-	fmt.Println("Signed")
+	ots_pk := getWOTSPKFromMessageAndSignature(params, ots_sig, ots_msg, pk.PKseed, tree)
 
-	ots_pk := getWOTSPKFromMessageAndSignature(params, ots_sig, ots_msg, pk.PKseed)
+	fmt.Println("Signed message")
+	fmt.Printf("Public key used for WOTS in last layer: %x\n", ots_pk)
 
 	for i := 0; i < 100; i++ {
+		// sign the same message but cause a fault
 		oracleInputFaulty <- message
 		badSig := <-oracleResponseFaulty
-		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
-		//success, _ := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed)
-		if success {
-			fmt.Println("YAY!!!")
+
+		// try to recreate message from signature, with h =64 and d = 8 this has a 1/16 chance of success
+		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badSig.SIG_HT.GetXMSSSignature(16).WotsSignature, ots_pk, params, pk.PKseed, tree)
+		if success { // message was signed with ots_pk
 			fmt.Println(faultyMessage)
 		}
-		//fmt.Print(i)
-		//fmt.Print(",")
 	}
 
 	oracleInput <- nil // stop oracle thread
@@ -86,16 +83,23 @@ func createSigningOracle(params *parameters.Parameters) (*sphincs.SPHINCS_PK, ch
 	return pk, messageChan, signatureChan, messageChanFault, signatureChanFault
 }
 
-func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte) (bool, []int) {
+func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte, tree uint64) (bool, []int) {
 	// repeated hashes on sig should be equal to publicKey
 	// number of hashes correspond to m (inc checksum)
 	m := make([]int, 0)
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
+	idx_leaf := 0
+	for j := 1; j < params.D; j++ {
+		idx_leaf = int(tree % (1 << uint64(params.H/params.D)))
+		tree = tree >> (params.H / params.D)
+	}
+	adrs.SetKeyPairAddress(idx_leaf)
 
 	for i := 0; i < params.Len; i++ {
 		for c := 0; c < params.W; c++ {
 			adrs.SetChainAddress(i)
+			adrs.SetHashAddress(0)
 			hashed := wots.Chain(params, sig[i*params.N:(i+1)*params.N], params.W-1-c, c, PKseed, adrs)
 			if bytes.Equal(hashed, pk[i*params.N:(i+1)*params.N]) {
 				m = append(m, params.W-c-1)
@@ -111,13 +115,17 @@ func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.
 }
 
 // Finds pk from signature, for verification
-func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature []byte, message []byte, PKseed []byte) []byte {
+func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature []byte, message []byte, PKseed []byte, tree uint64) []byte {
 	csum := 0
+
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
-
-	// Make a copy of adrs
-	wotspkADRS := adrs.Copy()
+	idx_leaf := 0
+	for j := 1; j < params.D; j++ {
+		idx_leaf = int(tree % (1 << uint64(params.H/params.D)))
+		tree = tree >> (params.H / params.D)
+	}
+	adrs.SetKeyPairAddress(idx_leaf)
 
 	// convert message to base w
 	msg := util.Base_w(message, params.W, params.Len1)
@@ -137,9 +145,6 @@ func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature [
 		adrs.SetChainAddress(i)
 		copy(tmp[i*params.N:], wots.Chain(params, signature[i*params.N:(i+1)*params.N], msg[i], params.W-1-msg[i], PKseed, adrs))
 	}
-
-	wotspkADRS.SetType(address.WOTS_PK)
-	wotspkADRS.SetKeyPairAddress(adrs.GetKeyPairAddress())
 
 	return tmp
 }

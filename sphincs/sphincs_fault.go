@@ -61,7 +61,7 @@ func Spx_sign_fault(params *parameters.Parameters, M []byte, SK *SPHINCS_SK) *SP
 	return SIG
 }
 
-func Spx_verify_get_msg_sig(params *parameters.Parameters, M []byte, SIG *SPHINCS_SIG, PK *SPHINCS_PK) (bool, []byte, []byte) {
+func Spx_verify_get_msg_sig_tree(params *parameters.Parameters, M []byte, SIG *SPHINCS_SIG, PK *SPHINCS_PK) (bool, []byte, []byte, uint64) {
 	// init
 	adrs := new(address.ADRS)
 	R := SIG.GetR()
@@ -98,6 +98,6 @@ func Spx_verify_get_msg_sig(params *parameters.Parameters, M []byte, SIG *SPHINC
 
 	// verify HT signature
 	adrs.SetType(address.TREE)
-	//a, b, c := hypertree.Ht_verify_get_msg_sig(params, PK_FORS, SIG_HT, PKseed, idx_tree, idx_leaf, PKroot)
-	return hypertree.Ht_verify_get_msg_sig(params, PK_FORS, SIG_HT, PKseed, idx_tree, idx_leaf, PKroot)
+	success, msg, sig := hypertree.Ht_verify_get_msg_sig(params, PK_FORS, SIG_HT, PKseed, idx_tree, idx_leaf, PKroot)
+	return success, msg, sig, idx_tree
 }

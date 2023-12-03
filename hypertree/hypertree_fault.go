@@ -26,17 +26,12 @@ func Ht_sign_fault(params *parameters.Parameters, M []byte, SKseed []byte, PKsee
 		adrs.SetLayerAddress(j)
 		adrs.SetTreeAddress(idx_tree)
 
-		// cause fault in second to last tree by mutating a bit of root
-		if j == params.D-2 {
-			fault_b(root)
-		}
-
 		SIG_tmp = xmss.Xmss_sign(params, root, SKseed, idx_leaf, PKseed, adrs)
 
 		// cause fault in second to last tree by mutating a bit of SIG_tmp
-		//if j == params.D-2 {
-		//	fault(SIG_tmp)
-		//}
+		if j == params.D-2 {
+			fault(SIG_tmp)
+		}
 
 		SIG_HT = append(SIG_HT, SIG_tmp)
 		if j < params.D-1 {
@@ -47,23 +42,17 @@ func Ht_sign_fault(params *parameters.Parameters, M []byte, SKseed []byte, PKsee
 	return &HTSignature{SIG_HT}
 }
 
-//func fault(SIG_tmp *xmss.XMSSSignature) {
-//	//mathrand.Seed(0)
-//	//fmt.Println("Seeded fault!!")
-//	targetBit := mathrand.Intn(8 * (len(SIG_tmp.AUTH) + len(SIG_tmp.WotsSignature)))
-//	if targetBit >= 8*len(SIG_tmp.AUTH) {
-//		// flip (targetBit - 8*len(SIG_tmp.AUTH)) bit of SIG_tmp.WotsSignature
-//		targetBit -= 8 * len(SIG_tmp.AUTH)
-//		SIG_tmp.WotsSignature[targetBit>>3] ^= 1 << (targetBit % 8)
-//	} else {
-//		// flip targetBit of SIG_tmp.AUTH
-//		SIG_tmp.AUTH[targetBit>>3] ^= 1 << (targetBit % 8)
-//	}
-//}
-
-func fault_b(bits []byte) {
-	//mathrand.Seed(0)
-	//fmt.Println("Seeded fault!!")
-	targetBit := mathrand.Intn(8 * len(bits))
-	bits[targetBit>>3] ^= 1 << (targetBit % 8)
+// given a signature randomly flip up to 64 bits
+func fault(SIG_tmp *xmss.XMSSSignature) {
+	for i := 0; i < mathrand.Intn(64); i++ {
+		targetBit := mathrand.Intn(8 * (len(SIG_tmp.AUTH) + len(SIG_tmp.WotsSignature)))
+		if targetBit >= 8*len(SIG_tmp.AUTH) {
+			// flip (targetBit - 8*len(SIG_tmp.AUTH)) bit of SIG_tmp.WotsSignature
+			targetBit -= 8 * len(SIG_tmp.AUTH)
+			SIG_tmp.WotsSignature[targetBit>>3] ^= 1 << (targetBit % 8)
+		} else {
+			// flip targetBit of SIG_tmp.AUTH
+			SIG_tmp.AUTH[targetBit>>3] ^= 1 << (targetBit % 8)
+		}
+	}
 }

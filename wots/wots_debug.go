@@ -31,16 +31,23 @@ func Wots_sign_debug(params *parameters.Parameters, message []byte, SKseed []byt
 
 	sks := make([]byte, 0)
 
+	pks := make([]byte, 0)
+
 	for i := 0; i < params.Len; i++ {
 		adrs.SetChainAddress(i)
 		adrs.SetHashAddress(0)
 		sk := params.Tweak.PRF(SKseed, adrs)
 		sks = append(sks, sk...)
 		copy(sig[i*params.N:], chain(params, sk, 0, msg[i], PKseed, adrs))
+
+		adrs.SetChainAddress(i)
+		adrs.SetHashAddress(0)
+		pks = append(pks, chain(params, sk, 0, 15, PKseed, adrs)...)
 	}
 
 	if adrs.LayerAddress[3] == 16 {
 		fmt.Printf("[Secret] final layer WOTS sk: %x\n", sks)
+		fmt.Printf("[Secret] final layer WOTS pk: %x\n", pks)
 	}
 
 	return sig

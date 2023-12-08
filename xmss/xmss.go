@@ -1,6 +1,7 @@
 package xmss
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
@@ -73,7 +74,15 @@ func Xmss_pkFromSig(params *parameters.Parameters, idx int, SIG_XMSS *XMSSSignat
 	sig := SIG_XMSS.GetWOTSSig()
 	AUTH := SIG_XMSS.GetXMSSAUTH()
 
+	if adrs.LayerAddress[3] == 16 {
+		fmt.Println(adrs)
+		fmt.Println(M[:20])
+		fmt.Println(sig[:20])
+	}
 	node0 := wots.Wots_pkFromSig(params, sig, M, PKseed, adrs)
+	if adrs.LayerAddress[3] == 16 {
+		fmt.Println(node0[:20])
+	}
 	var node1 []byte
 
 	// compute root from WOTS+ pk and AUTH

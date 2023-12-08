@@ -1,6 +1,7 @@
 package wots
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
@@ -109,7 +110,12 @@ func Wots_pkFromSig(params *parameters.Parameters, signature []byte, message []b
 
 	wotspkADRS.SetType(address.WOTS_PK)
 	wotspkADRS.SetKeyPairAddress(adrs.GetKeyPairAddress())
-
+	if adrs.LayerAddress[3] == 16 {
+		fmt.Printf("this %x\n", tmp)
+	}
 	pk_sig := params.Tweak.T_l(PKseed, wotspkADRS, tmp)
+	if adrs.LayerAddress[3] == 16 {
+		fmt.Println("hshd", pk_sig)
+	}
 	return pk_sig
 }

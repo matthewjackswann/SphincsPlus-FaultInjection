@@ -16,12 +16,12 @@ func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.
 	m := make([]int, 0)
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
-	idx_leaf := 0
+	idxLeaf := 0
 	for j := 1; j < params.D; j++ {
-		idx_leaf = int(tree % (1 << uint64(params.H/params.D)))
+		idxLeaf = int(tree % (1 << uint64(params.H/params.D)))
 		tree = tree >> (params.H / params.D)
 	}
-	adrs.SetKeyPairAddress(idx_leaf)
+	adrs.SetKeyPairAddress(idxLeaf)
 
 	for i := 0; i < params.Len; i++ {
 		for c := 0; c < params.W; c++ {
@@ -44,37 +44,15 @@ func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.
 func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature []byte, message []byte, PKseed []byte, tree uint64) []byte {
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
-	idx_leaf := 0
+	idxLeaf := 0
 	for j := 1; j < params.D; j++ {
-		idx_leaf = int(tree % (1 << uint64(params.H/params.D)))
+		idxLeaf = int(tree % (1 << uint64(params.H/params.D)))
 		tree = tree >> (params.H / params.D)
 	}
-	adrs.SetKeyPairAddress(idx_leaf)
+	adrs.SetKeyPairAddress(idxLeaf)
 
 	// convert message to base w
 	msg := msgToBaseW(params, message)
-
-	sig := make([]byte, params.Len*params.N)
-
-	for i := 0; i < params.Len; i++ {
-		adrs.SetChainAddress(i)
-		adrs.SetHashAddress(0)
-		copy(sig[i*params.N:], wots.Chain(params, signature[i*params.N:(i+1)*params.N], msg[i], params.W-1-msg[i], PKseed, adrs))
-	}
-
-	return sig
-}
-
-// Finds pk from signature, for verification
-func getWOTSPKFromMessageAndSignatureI(params *parameters.Parameters, signature []byte, msg []int, PKseed []byte, tree uint64) []byte {
-	adrs := new(address.ADRS)
-	adrs.SetLayerAddress(16) // target layer in the tree
-	idx_leaf := 0
-	for j := 1; j < params.D; j++ {
-		idx_leaf = int(tree % (1 << uint64(params.H/params.D)))
-		tree = tree >> (params.H / params.D)
-	}
-	adrs.SetKeyPairAddress(idx_leaf)
 
 	sig := make([]byte, params.Len*params.N)
 
@@ -106,22 +84,22 @@ func getTreeIdxFromMsg(params *parameters.Parameters, R []byte, PK *sphincs.SPHI
 	// compute message digest and index
 	digest := params.Tweak.Hmsg(R, PK.PKseed, PK.PKroot, M)
 
-	tmp_md_bytes := int(math.Floor(float64(params.K*params.A+7) / 8))
-	tmp_idx_tree_bytes := int(math.Floor(float64(params.H-params.H/params.D+7) / 8))
-	tmp_idx_tree := digest[tmp_md_bytes:(tmp_md_bytes + tmp_idx_tree_bytes)]
+	tmpMdBytes := int(math.Floor(float64(params.K*params.A+7) / 8))
+	tmpIdxTreeBytes := int(math.Floor(float64(params.H-params.H/params.D+7) / 8))
+	tmpIdxTree := digest[tmpMdBytes:(tmpMdBytes + tmpIdxTreeBytes)]
 
-	idx_tree := uint64(util.BytesToUint64(tmp_idx_tree) & (math.MaxUint64 >> (64 - (params.H - params.H/params.D))))
+	idxTree := uint64(util.BytesToUint64(tmpIdxTree) & (math.MaxUint64 >> (64 - (params.H - params.H/params.D))))
 
 	for j := 1; j < params.D-1; j++ {
-		idx_tree = idx_tree >> (params.H / params.D)
+		idxTree = idxTree >> (params.H / params.D)
 	}
-	return idx_tree
+	return idxTree
 }
 
-func forgeSignature(params *parameters.Parameters, hashCount, messageBlocks []int, minimalSignature, PKseed []byte, idx_leaf uint64) []byte {
+func forgeOTSignature(params *parameters.Parameters, hashCount, messageBlocks []int, minimalSignature, PKseed []byte, idxLeaf uint64) []byte {
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
-	adrs.SetKeyPairAddress(int(idx_leaf))
+	adrs.SetKeyPairAddress(int(idxLeaf))
 	newSig := make([]byte, params.Len*params.N)
 
 	for i := 0; i < params.Len; i++ {

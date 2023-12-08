@@ -49,8 +49,6 @@ func main() {
 	copy(smallestSignature, ots_sig)
 	hashCount := msgToBaseW(params, ots_msg)
 
-	fmt.Println("hc", hashCount)
-
 	target_idx_tree := tree
 	for j := 1; j < params.D-1; j++ {
 		target_idx_tree = target_idx_tree >> (params.H / params.D)
@@ -139,7 +137,7 @@ func main() {
 			}
 		}
 		if !signable {
-			fmt.Println("Message was not singable with our recovered minimal signature :(")
+			fmt.Println("Message was not singable with our recovered smallest signature :(")
 			continue
 		}
 		fmt.Println("Attempting to forge")
@@ -147,23 +145,9 @@ func main() {
 		partialFSig.SIG_HT.XMSSSignatures[16].WotsSignature = f_wots_sig
 		partialFSig.SIG_HT.XMSSSignatures[16].AUTH = goodSignature.SIG_HT.XMSSSignatures[16].AUTH
 
-		fmt.Println(otsMsg[:20])
-		fmt.Println(f_wots_sig[:20])
-		fmt.Println(ots_pk[:20])
-		fmt.Println("--------")
-
-		//adrs := new(address.ADRS)
-		//adrs.SetLayerAddress(16) // target layer in the tree
-		//adrs.SetKeyPairAddress(int(target_idx_tree))
-		//fmt.Println(wots.Wots_pkFromSig(params, f_wots_sig, otsMsg, pk.PKseed, adrs))
-
 		fmt.Println(sphincs.Spx_verify(params, forgedMessage, partialFSig, pk))
 
-		fmt.Println("--------------- Good v")
-
 		fmt.Println(sphincs.Spx_verify(params, goodMessage, goodSignature, pk))
-
-		fmt.Println(target_idx_tree)
 
 		return
 	}
@@ -262,7 +246,6 @@ func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature [
 
 	// convert message to base w
 	msg := msgToBaseW(params, message)
-	fmt.Println("ms", msg)
 
 	sig := make([]byte, params.Len*params.N)
 
@@ -332,7 +315,6 @@ func forgeSignature(params *parameters.Parameters, hashCount, messageBlocks []in
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
 	adrs.SetKeyPairAddress(int(idx_leaf))
-	fmt.Println(adrs)
 	newSig := make([]byte, params.Len*params.N)
 
 	for i := 0; i < params.Len; i++ {

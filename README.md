@@ -6,6 +6,8 @@ It specifically answers the question
 > Write or modify an implementation of SPHINCS+ that can _simulate_ the fault
 described in the paper (Practical Fault Injection Attacks on SPHINCS - Aymeric Genêt, Matthias J. Kannwischer, Hervé Pelletier, and Andrew McLauchlan), and implement the processing phase.
 
+by implementing an attack, allowing an adversary to universally forge message signatures (I hope).
+
 This is a fork of [SPHINCSPLUS-golang](https://github.com/kasperdi/SPHINCSPLUS-golang), a pre-existing SPHINCS+ implementation in go
 
 ## SPHINCSPLUS-golang
@@ -24,10 +26,10 @@ The attack works be re-using a winternitz one time signature (WOTS). By signing 
 - We then repeatability faultily sign messages and see if we can reverse the message from the signature and $sk$.
   - If the message was signed with another $sk'$ then the message can't be reversed, and we try another message.
 - If any block of the new signature is hashed less than the current best, we can update that block, effectively moving backwards up the hash chain.
-- Once we have made a small enough signature we can sign any message with each block strictly better than the current best. This allows an adversary to create a hypertree and sign it's public key as if it was signed with $sk$. This would allow an adversary to sign any message as if they were the owner of the SPHINCS+ public key (which is bad).
+- Once we have made a small enough signature we can sign any message with each block strictly better than the current best. This allows an adversary to create a hypertree and sign it's public key as if it was signed with $sk$. This allows an adversary to sign any message as if they were the owner of the SPHINCS+ public key (which is bad).
 
 ## Implementation
-`attack.go` contains the main script used for running the attack.
+`attack.go` contains the main script used for running the attack and `attack_helper.go` contains helper functions for the attack.
 
 Files ending in `_fault` contain a modified version of the original code and simulating a fault occurring during encryption.
 
@@ -43,8 +45,11 @@ go run attack.go
 ```
 The program will repeatedly test faulty signatures until the user presses `ENTER` on the console.
 
+It will then try and forge a signature for a randomly created message.
+
 ## Output
 
+### faultySignAndCreateSmallestSignature
 When the program starts it signs a message and outputs the secret key used in the last layer of the hypertree. This is only debug output for showing correctness and isn't accessible during the attack.
 
 When a new smallest signature is found, the number of times each block has been hashed is output to the console.
@@ -53,3 +58,11 @@ After enough time the user can press enter to finish searching. The program will
 - Stop the oracle thread. This prints the number of time it signed and faultily signed a message
 - Print the smallest number of times each block in the smallest signature were hashed.
 - Print the smallest signature. If a block was hashed $0$ times then it should correspond with the debug secret key output at the start of the program 
+
+### forgeMessageSignature
+
+The program will then try and create a new hypertree, such that it can be signed using the smallest signature. It re-generates key pairs as non-random variants of SPHINCS+ will consistently fail to verify.
+
+Once a hypertree is found such that it's nodes public key is strictly greater than the minimum number of hashes in each block of the smallest signature, it can be grafted onto an already valid signature.
+
+This is returned and tested to ensure the provided message and generated signature, verify using the public key of the oracle.

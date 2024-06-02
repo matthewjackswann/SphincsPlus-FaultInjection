@@ -7,6 +7,7 @@ import (
 	"github.com/kasperdi/SPHINCSPLUS-golang/parameters"
 	"github.com/kasperdi/SPHINCSPLUS-golang/sphincs"
 	"os"
+	"time"
 )
 
 func main() {
@@ -27,14 +28,15 @@ func main() {
 	oracleInput <- goodMessage
 	goodSignature := <-oracleResponse
 
-	smallestSignature, hashCount, targetIdxTree :=
-		faultySignAndCreateSmallestSignature(goodMessage, goodSignature, oracleInputFaulty, oracleResponseFaulty, params, pk)
+	shortestHashChains, hashCount, targetIdxTree :=
+		faultySignAndCreateShortestHashChains(goodMessage, goodSignature, oracleInputFaulty, oracleResponseFaulty, params, pk)
 
 	oracleInput <- nil // stop oracle thread
+	time.Sleep(time.Millisecond * 100)
 
-	fmt.Print("We can now sign anything given each block of the message is strictly greater than: ")
-	fmt.Println(hashCount)
-	fmt.Printf("The corresponding smallest signature is %x\n", smallestSignature)
+	fmt.Println("We can now sign anything given each block of the message is strictly greater than: ")
+	printIntArrayPadded(hashCount)
+	fmt.Printf("The corresponding smallest hash chain lengths are: %x...\n\n", shortestHashChains[:256])
 
 	// create message to try and forge a signature for
 	forgedMessage := make([]byte, params.N)
@@ -43,7 +45,7 @@ func main() {
 		panic(err)
 	}
 
-	forgedSignature := forgeMessageSignature(params, forgedMessage, pk, targetIdxTree, goodSignature, hashCount, smallestSignature)
+	forgedSignature := forgeMessageSignature(params, forgedMessage, pk, targetIdxTree, goodSignature, hashCount, shortestHashChains)
 
 	// check our forged message signs. We had no knowledge of sk :)
 	if sphincs.Spx_verify(params, forgedMessage, forgedSignature, pk) {
@@ -54,7 +56,7 @@ func main() {
 
 }
 
-func faultySignAndCreateSmallestSignature(
+func faultySignAndCreateShortestHashChains(
 	goodMessage []byte, goodSignature *sphincs.SPHINCS_SIG, oracleInputFaulty chan []byte, oracleResponseFaulty chan *sphincs.SPHINCS_SIG,
 	params *parameters.Parameters, pk *sphincs.SPHINCS_PK) ([]byte, []int, uint64) {
 
@@ -64,9 +66,14 @@ func faultySignAndCreateSmallestSignature(
 		panic("Good signature didn't sign :(")
 	}
 
+	targetIdxTree := tree
+	for j := 1; j < params.D-1; j++ {
+		targetIdxTree = targetIdxTree >> (params.H / params.D)
+	}
+
 	// maintain list of the fewest times hashed sk and how many times it was hashed
-	smallestSignature := make([]byte, len(otsSig))
-	copy(smallestSignature, otsSig)
+	shortestHashChains := make([]byte, len(otsSig))
+	copy(shortestHashChains, otsSig)
 	hashCount := msgToBaseW(params, otsMsg)
 
 	otsPk := getWOTSPKFromMessageAndSignature(params, otsSig, otsMsg, pk.PKseed, tree)
@@ -83,34 +90,37 @@ func faultySignAndCreateSmallestSignature(
 			badSig := <-oracleResponseFaulty
 			badWotsSig := badSig.SIG_HT.GetXMSSSignature(16).WotsSignature
 
-			// try to recreate message from signature, with h =64 and d = 8 this has a 1/16 chance of success
+			if targetIdxTree != getTreeIdxFromMsg(params, badSig.R, pk, goodMessage) {
+				continue
+			}
+
+			// try to recreate message from signature
 			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, otsPk, params, pk.PKseed, tree)
-			if success { // message was signed with ots_pk
-				smaller := false
-				for block := 0; block < params.Len; block++ {
-					// if a sig with fewer hashes of a sk if found, update the smallest signature
-					if hashCount[block] > faultyMessage[block] {
-						smaller = true
-						copy(smallestSignature[block*params.N:(block+1)*params.N], badWotsSig[block*params.N:(block+1)*params.N])
-						hashCount[block] = faultyMessage[block]
-					}
-				}
-				if smaller {
-					fmt.Print("New smallest signature: ")
-					fmt.Println(hashCount)
-				} else {
-					fmt.Println("New non-smaller signature found")
+			if !success {
+				panic("Can't recreate message with fault from sig on target tree. This should never happen.")
+			}
+
+			smaller := false
+			for block := 0; block < params.Len; block++ {
+				// if a sig with fewer hashes of a WOTS sk is found, update the shortest hash chain
+				if hashCount[block] > faultyMessage[block] {
+					smaller = true
+					copy(shortestHashChains[block*params.N:(block+1)*params.N], badWotsSig[block*params.N:(block+1)*params.N])
+					hashCount[block] = faultyMessage[block]
 				}
 			}
+
+			if smaller {
+				fmt.Println("New shortest set of hash chains: ")
+				printIntArrayPadded(hashCount)
+			} else {
+				fmt.Println("New non-smaller set of hash chains found")
+			}
+
 		}
 	}
 
-	targetIdxTree := tree
-	for j := 1; j < params.D-1; j++ {
-		targetIdxTree = targetIdxTree >> (params.H / params.D)
-	}
-
-	return smallestSignature, hashCount, targetIdxTree
+	return shortestHashChains, hashCount, targetIdxTree
 }
 
 func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sphincs.SPHINCS_PK, targetIdxTree uint64,
@@ -141,7 +151,7 @@ func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sp
 			}
 		}
 		if !signable {
-			fmt.Println("Message was not signable with our recovered smallest signature :(")
+			fmt.Println("Message was not signable with our recovered shortest hash chain length :(")
 			continue
 		}
 

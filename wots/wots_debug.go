@@ -40,7 +40,7 @@ func Wots_sign_debug(params *parameters.Parameters, message []byte, SKseed []byt
 	}
 
 	if adrs.LayerAddress[3] == 16 {
-		fmt.Printf("[Secret] final layer WOTS sk: %x\n", sks)
+		fmt.Printf("[Secret] final layer WOTS sk: %x...\n", sks[:256])
 	}
 
 	return sig

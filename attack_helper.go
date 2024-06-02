@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
 	"github.com/kasperdi/SPHINCSPLUS-golang/parameters"
 	"github.com/kasperdi/SPHINCSPLUS-golang/sphincs"
@@ -109,4 +110,12 @@ func forgeOTSignature(params *parameters.Parameters, hashCount, messageBlocks []
 	}
 
 	return newSig
+}
+
+func printIntArrayPadded(arr []int) {
+	fmt.Print("[")
+	for i := 0; i < len(arr); i++ {
+		fmt.Printf("%02d ", arr[i])
+	}
+	fmt.Println("]")
 }

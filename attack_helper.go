@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
@@ -9,6 +10,7 @@ import (
 	"github.com/kasperdi/SPHINCSPLUS-golang/util"
 	"github.com/kasperdi/SPHINCSPLUS-golang/wots"
 	"math"
+	"os"
 )
 
 func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte, tree uint64) (bool, []int) {
@@ -110,6 +112,55 @@ func forgeOTSignature(params *parameters.Parameters, hashCount, messageBlocks []
 	}
 
 	return newSig
+}
+
+func createSigningOracle(params *parameters.Parameters) (*sphincs.SPHINCS_PK, chan []byte, chan *sphincs.SPHINCS_SIG, chan []byte, chan *sphincs.SPHINCS_SIG) {
+	sk, pk := sphincs.Spx_keygen(params)
+	messageChan := make(chan []byte)
+	signatureChan := make(chan *sphincs.SPHINCS_SIG)
+
+	messageChanFault := make(chan []byte)
+	signatureChanFault := make(chan *sphincs.SPHINCS_SIG)
+
+	validSigns := 0
+	faultySigns := 0
+
+	go func() {
+		responding := true
+		for responding {
+			select {
+			case m := <-messageChan:
+				if m == nil {
+					responding = false
+					break
+				}
+				validSigns += 1
+				signatureChan <- sphincs.Spx_sign_debug(params, m, sk)
+			case m := <-messageChanFault:
+				if m == nil {
+					responding = false
+					break
+				}
+				faultySigns += 1
+				signatureChanFault <- sphincs.Spx_sign_fault(params, m, sk)
+			}
+		}
+		fmt.Println("Oracle stopping")
+		fmt.Printf("Signed correctly: %d\n", validSigns)
+		fmt.Printf("Signed with fault: %d\n", faultySigns)
+	}()
+
+	return pk, messageChan, signatureChan, messageChanFault, signatureChanFault
+}
+
+func waitForUserInput() chan interface{} {
+	userInput := make(chan interface{})
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		userInput <- new(interface{})
+	}()
+	return userInput
 }
 
 func printIntArrayPadded(arr []int) {

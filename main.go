@@ -20,7 +20,7 @@ func main() {
 	case "singleSubtree":
 		singleSubtree()
 	case "singleSubtreeStats":
-
+		singleSubtreeStats()
 	case "3":
 		fmt.Println("Hi")
 	default:

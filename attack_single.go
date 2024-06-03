@@ -58,7 +58,7 @@ func faultySignAndCreateShortestHashChains(
 	params *parameters.Parameters, pk *sphincs.SPHINCS_PK) ([]byte, []int, uint64) {
 
 	fmt.Println("Signing faulty messages. Press enter to stop")
-	success, otsMsg, otsSig, tree := sphincs.Spx_verify_get_msg_sig_tree(params, goodMessage, goodSignature, pk)
+	success, wotsMsg, wotsSig, tree := sphincs.Spx_verify_get_msg_sig_tree(params, goodMessage, goodSignature, pk)
 	if !success {
 		panic("Good signature didn't sign :(")
 	}
@@ -69,11 +69,11 @@ func faultySignAndCreateShortestHashChains(
 	}
 
 	// maintain list of the fewest times hashed sk and how many times it was hashed
-	shortestHashChains := make([]byte, len(otsSig))
-	copy(shortestHashChains, otsSig)
-	hashCount := msgToBaseW(params, otsMsg)
+	shortestHashChains := make([]byte, len(wotsSig))
+	copy(shortestHashChains, wotsSig)
+	hashCount := msgToBaseW(params, wotsMsg)
 
-	otsPk := getWOTSPKFromMessageAndSignature(params, otsSig, otsMsg, pk.PKseed, tree)
+	wotsPk := getWOTSPKFromMessageAndSignature(params, wotsSig, wotsMsg, pk.PKseed, tree)
 
 	userInput := waitForUserInput()
 	searching := true
@@ -92,7 +92,7 @@ func faultySignAndCreateShortestHashChains(
 			}
 
 			// try to recreate message from signature
-			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, otsPk, params, pk.PKseed, tree)
+			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, wotsPk, params, pk.PKseed, tree)
 			if !success {
 				panic("Can't recreate message with fault from sig on target tree. This should never happen.")
 			}
@@ -137,9 +137,9 @@ func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sp
 		}
 		fmt.Println(" Found")
 
-		// see if we can forge the OTS of this message, given our hashCount
-		_, otsMsg, _, _ := sphincs.Spx_verify_get_msg_sig_tree(params, message, partialFSig, pk)
-		messageBlocks := msgToBaseW(params, otsMsg)
+		// see if we can forge the WOTS of this message, given our hashCount
+		_, wotsMsg, _, _ := sphincs.Spx_verify_get_msg_sig_tree(params, message, partialFSig, pk)
+		messageBlocks := msgToBaseW(params, wotsMsg)
 
 		signable := true
 		for i := 0; i < params.Len; i++ {
@@ -149,10 +149,14 @@ func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sp
 		}
 		if !signable {
 			fmt.Println("Message was not signable with our recovered shortest hash chain length :(")
+			printHashCountVsMessageBlocks(messageBlocks, hashCount)
 			continue
 		}
 
-		fmt.Println("Attempting to forge")
+		fmt.Println("Attempting to forge with required chain lengths:")
+		printIntArrayPadded(messageBlocks)
+		fmt.Println("Each of which is greater than or equal to the shortest chail lengths:")
+		printIntArrayPadded(hashCount)
 		// create forgery
 		forgedSignature := partialFSig
 		fWotsSig := forgeOTSignature(params, hashCount, messageBlocks, smallestSignature, pk.PKseed, targetIdxTree)
@@ -168,4 +172,133 @@ func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sp
 		}
 
 	}
+}
+
+func singleSubtreeStats() {
+	userInput := waitForUserInput()
+	looping := true
+	for looping {
+		select {
+		case <-userInput:
+			looping = false
+		default:
+			// sphincs+ parameters
+			params := parameters.MakeSphincsPlusSHA256256fRobust(true)
+
+			// create random message to sign
+			goodMessage := make([]byte, params.N)
+			_, err := rand.Read(goodMessage)
+			if err != nil {
+				panic(err)
+			}
+
+			// createSigningOracle returns only the public key and channels for messages and signatures
+			pk, oracleInput, oracleResponse, oracleInputFaulty, oracleResponseFaulty := createSigningOracle(params)
+			// sign correctly
+			oracleInput <- goodMessage
+			goodSignature := <-oracleResponse
+
+			// create message to try and forge a signature for
+			forgedMessage := make([]byte, params.N)
+			_, err = rand.Read(forgedMessage)
+			if err != nil {
+				panic(err)
+			}
+
+			faultySigsRequired :=
+				findRequiredSignatureNumber(goodMessage, goodSignature, oracleInputFaulty, oracleResponseFaulty, params, pk, forgedMessage)
+
+			oracleInput <- nil // stop oracle thread
+
+			fmt.Printf("%d faulty signatures required\n", faultySigsRequired)
+			appendToFile("singleNodeFaultyRequires.csv", fmt.Sprintf("%d", faultySigsRequired))
+		}
+	}
+}
+
+func findRequiredSignatureNumber(
+	goodMessage []byte, goodSignature *sphincs.SPHINCS_SIG, oracleInputFaulty chan []byte, oracleResponseFaulty chan *sphincs.SPHINCS_SIG,
+	params *parameters.Parameters, pk *sphincs.SPHINCS_PK, forgedMessage []byte) int {
+
+	success, wotsMsg, wotsSig, tree := sphincs.Spx_verify_get_msg_sig_tree(params, goodMessage, goodSignature, pk)
+	if !success {
+		panic("Good signature didn't sign :(")
+	}
+
+	targetIdxTree := tree
+	for j := 1; j < params.D-1; j++ {
+		targetIdxTree = targetIdxTree >> (params.H / params.D)
+	}
+
+	// key pair used to create hypertree to forge signature with
+	fSk, _ := sphincs.Spx_keygen(params)
+	// check partialFSig signed with pk last tree_idx is the same as with signing with fPk
+	partialFSig := sphincs.Spx_sign(params, forgedMessage, fSk)
+	for targetIdxTree != getTreeIdxFromMsg(params, partialFSig.R, pk, forgedMessage) {
+		// pick new keys to forge with in case of not random
+		partialFSig = sphincs.Spx_sign(params, forgedMessage, fSk)
+		fSk, _ = sphincs.Spx_keygen(params)
+	}
+
+	// maintain list of the fewest times hashed sk and how many times it was hashed
+	shortestHashChains := make([]byte, len(wotsSig))
+	copy(shortestHashChains, wotsSig)
+	hashCount := msgToBaseW(params, wotsMsg)
+
+	wotsPk := getWOTSPKFromMessageAndSignature(params, wotsSig, wotsMsg, pk.PKseed, tree)
+
+	for i := 1; i <= 2000; i++ { // keep looping until max 2000 sigs tried or the forgery succeeds
+		// sign the same message but cause a fault
+		oracleInputFaulty <- goodMessage
+		badSig := <-oracleResponseFaulty
+		badWotsSig := badSig.SIG_HT.GetXMSSSignature(16).WotsSignature
+
+		if targetIdxTree != getTreeIdxFromMsg(params, badSig.R, pk, goodMessage) {
+			continue
+		}
+
+		// try to recreate message from signature
+		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, wotsPk, params, pk.PKseed, tree)
+		if !success {
+			panic("Can't recreate message with fault from sig on target tree. This should never happen.")
+		}
+
+		smaller := false
+		for block := 0; block < params.Len; block++ {
+			// if a sig with fewer hashes of a WOTS sk is found, update the shortest hash chain
+			if hashCount[block] > faultyMessage[block] {
+				smaller = true
+				copy(shortestHashChains[block*params.N:(block+1)*params.N], badWotsSig[block*params.N:(block+1)*params.N])
+				hashCount[block] = faultyMessage[block]
+			}
+		}
+
+		if smaller {
+			forgeable := checkMessageForgeable(params, forgedMessage, pk, partialFSig, hashCount)
+			if forgeable {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func checkMessageForgeable(params *parameters.Parameters, message []byte, pk *sphincs.SPHINCS_PK,
+	partialFSig *sphincs.SPHINCS_SIG, hashCount []int) bool {
+
+	// see if we can forge the WOTS of this message, given our hashCount
+	_, wotsMsg, _, _ := sphincs.Spx_verify_get_msg_sig_tree(params, message, partialFSig, pk)
+	messageBlocks := msgToBaseW(params, wotsMsg)
+
+	signable := true
+	for i := 0; i < params.Len; i++ {
+		if messageBlocks[i] < hashCount[i] {
+			signable = false
+		}
+	}
+
+	printHashCountVsMessageBlocks(messageBlocks, hashCount)
+	fmt.Println()
+
+	return signable
 }

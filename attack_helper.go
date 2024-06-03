@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/fatih/color"
 	"github.com/kasperdi/SPHINCSPLUS-golang/address"
 	"github.com/kasperdi/SPHINCSPLUS-golang/parameters"
 	"github.com/kasperdi/SPHINCSPLUS-golang/sphincs"
@@ -169,4 +170,48 @@ func printIntArrayPadded(arr []int) {
 		fmt.Printf("%02d ", arr[i])
 	}
 	fmt.Println("]")
+}
+
+func printHashCountVsMessageBlocks(messageBlocks, hashCount []int) {
+	c := color.New(color.FgRed)
+	fmt.Print("[")
+	for i := 0; i < len(messageBlocks); i++ {
+		if messageBlocks[i] < hashCount[i] {
+			if _, err := c.Printf("%02d ", hashCount[i]); err != nil {
+				panic("error printing in colour")
+			}
+		} else {
+			fmt.Printf("%02d ", hashCount[i])
+		}
+	}
+	fmt.Println("]")
+
+	c = color.New(color.FgGreen)
+	fmt.Print("[")
+	for i := 0; i < len(messageBlocks); i++ {
+		if messageBlocks[i] >= hashCount[i] {
+			if _, err := c.Printf("%02d ", messageBlocks[i]); err != nil {
+				panic("error printing in colour")
+			}
+		} else {
+			fmt.Printf("%02d ", messageBlocks[i])
+		}
+	}
+	fmt.Println("]")
+
+}
+
+func appendToFile(filename string, line string) {
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	if _, err = f.WriteString(line + "\n"); err != nil {
+		panic(err)
+	}
+
+	if err = f.Close(); err != nil {
+		panic(err)
+	}
 }

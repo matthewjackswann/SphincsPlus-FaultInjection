@@ -14,17 +14,12 @@ import (
 	"os"
 )
 
-func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte, tree uint64) (bool, []int) {
+func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.Parameters, PKseed []byte, idxLeaf int) (bool, []int) {
 	// repeated hashes on sig should be equal to publicKey
 	// number of hashes correspond to m (inc checksum)
 	m := make([]int, 0)
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
-	idxLeaf := 0
-	for j := 1; j < params.D; j++ {
-		idxLeaf = int(tree % (1 << uint64(params.H/params.D)))
-		tree = tree >> (params.H / params.D)
-	}
 	adrs.SetKeyPairAddress(idxLeaf)
 
 	for i := 0; i < params.Len; i++ {
@@ -45,14 +40,9 @@ func getWOTSMessageFromSignatureAndPK(sig []byte, pk []byte, params *parameters.
 }
 
 // Finds pk from signature, for verification
-func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature []byte, message []byte, PKseed []byte, tree uint64) []byte {
+func getWOTSPKFromMessageAndSignature(params *parameters.Parameters, signature []byte, message []byte, PKseed []byte, idxLeaf int) []byte {
 	adrs := new(address.ADRS)
 	adrs.SetLayerAddress(16) // target layer in the tree
-	idxLeaf := 0
-	for j := 1; j < params.D; j++ {
-		idxLeaf = int(tree % (1 << uint64(params.H/params.D)))
-		tree = tree >> (params.H / params.D)
-	}
 	adrs.SetKeyPairAddress(idxLeaf)
 
 	// convert message to base w
@@ -84,6 +74,15 @@ func msgToBaseW(params *parameters.Parameters, message []byte) []int {
 	return msg
 }
 
+func getLastTreeIdxFromMsg(params *parameters.Parameters, R []byte, PK *sphincs.SPHINCS_PK, M []byte) uint64 {
+	idxTree := getTreeIdxFromMsg(params, R, PK, M)
+
+	for j := 1; j < params.D-1; j++ {
+		idxTree = idxTree >> (params.H / params.D)
+	}
+	return idxTree
+}
+
 func getTreeIdxFromMsg(params *parameters.Parameters, R []byte, PK *sphincs.SPHINCS_PK, M []byte) uint64 {
 	// compute message digest and index
 	digest := params.Tweak.Hmsg(R, PK.PKseed, PK.PKroot, M)
@@ -94,9 +93,6 @@ func getTreeIdxFromMsg(params *parameters.Parameters, R []byte, PK *sphincs.SPHI
 
 	idxTree := uint64(util.BytesToUint64(tmpIdxTree) & (math.MaxUint64 >> (64 - (params.H - params.H/params.D))))
 
-	for j := 1; j < params.D-1; j++ {
-		idxTree = idxTree >> (params.H / params.D)
-	}
 	return idxTree
 }
 

@@ -73,7 +73,7 @@ func faultySignAndCreateShortestHashChains(
 	copy(shortestHashChains, wotsSig)
 	hashCount := msgToBaseW(params, wotsMsg)
 
-	wotsPk := getWOTSPKFromMessageAndSignature(params, wotsSig, wotsMsg, pk.PKseed, tree)
+	wotsPk := getWOTSPKFromMessageAndSignature(params, wotsSig, wotsMsg, pk.PKseed, int(targetIdxTree))
 
 	userInput := waitForUserInput()
 	searching := true
@@ -85,14 +85,14 @@ func faultySignAndCreateShortestHashChains(
 			// sign the same message but cause a fault
 			oracleInputFaulty <- goodMessage
 			badSig := <-oracleResponseFaulty
-			badWotsSig := badSig.SIG_HT.GetXMSSSignature(16).WotsSignature
+			badWotsSig := badSig.SIG_HT.GetXMSSSignature(params.D - 1).WotsSignature
 
-			if targetIdxTree != getTreeIdxFromMsg(params, badSig.R, pk, goodMessage) {
+			if targetIdxTree != getLastTreeIdxFromMsg(params, badSig.R, pk, goodMessage) {
 				continue
 			}
 
 			// try to recreate message from signature
-			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, wotsPk, params, pk.PKseed, tree)
+			success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, wotsPk, params, pk.PKseed, int(targetIdxTree))
 			if !success {
 				panic("Can't recreate message with fault from sig on target tree. This should never happen.")
 			}
@@ -129,7 +129,7 @@ func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sp
 		// check partialFSig signed with pk last tree_idx is the same as with signing with fPk
 		partialFSig := sphincs.Spx_sign(params, message, fSk)
 		fmt.Print("Looking for signature with matching final node")
-		for targetIdxTree != getTreeIdxFromMsg(params, partialFSig.R, pk, message) {
+		for targetIdxTree != getLastTreeIdxFromMsg(params, partialFSig.R, pk, message) {
 			// pick new keys to forge with in case of not random
 			partialFSig = sphincs.Spx_sign(params, message, fSk)
 			fSk, _ = sphincs.Spx_keygen(params)
@@ -155,13 +155,13 @@ func forgeMessageSignature(params *parameters.Parameters, message []byte, pk *sp
 
 		fmt.Println("Attempting to forge with required chain lengths:")
 		printIntArrayPadded(messageBlocks)
-		fmt.Println("Each of which is greater than or equal to the shortest chail lengths:")
+		fmt.Println("Each of which is greater than or equal to the shortest chain lengths:")
 		printIntArrayPadded(hashCount)
 		// create forgery
 		forgedSignature := partialFSig
 		fWotsSig := forgeOTSignature(params, hashCount, messageBlocks, smallestSignature, pk.PKseed, targetIdxTree)
-		forgedSignature.SIG_HT.XMSSSignatures[16].WotsSignature = fWotsSig
-		forgedSignature.SIG_HT.XMSSSignatures[16].AUTH = goodSignature.SIG_HT.XMSSSignatures[16].AUTH
+		forgedSignature.SIG_HT.XMSSSignatures[params.D-1].WotsSignature = fWotsSig
+		forgedSignature.SIG_HT.XMSSSignatures[params.D-1].AUTH = goodSignature.SIG_HT.XMSSSignatures[params.D-1].AUTH
 
 		// verify forgery signs
 		if sphincs.Spx_verify(params, message, partialFSig, pk) {
@@ -234,7 +234,7 @@ func findRequiredSignatureNumber(
 	fSk, _ := sphincs.Spx_keygen(params)
 	// check partialFSig signed with pk last tree_idx is the same as with signing with fPk
 	partialFSig := sphincs.Spx_sign(params, forgedMessage, fSk)
-	for targetIdxTree != getTreeIdxFromMsg(params, partialFSig.R, pk, forgedMessage) {
+	for targetIdxTree != getLastTreeIdxFromMsg(params, partialFSig.R, pk, forgedMessage) {
 		// pick new keys to forge with in case of not random
 		partialFSig = sphincs.Spx_sign(params, forgedMessage, fSk)
 		fSk, _ = sphincs.Spx_keygen(params)
@@ -245,20 +245,20 @@ func findRequiredSignatureNumber(
 	copy(shortestHashChains, wotsSig)
 	hashCount := msgToBaseW(params, wotsMsg)
 
-	wotsPk := getWOTSPKFromMessageAndSignature(params, wotsSig, wotsMsg, pk.PKseed, tree)
+	wotsPk := getWOTSPKFromMessageAndSignature(params, wotsSig, wotsMsg, pk.PKseed, int(targetIdxTree))
 
 	for i := 1; i <= 2000; i++ { // keep looping until max 2000 sigs tried or the forgery succeeds
 		// sign the same message but cause a fault
 		oracleInputFaulty <- goodMessage
 		badSig := <-oracleResponseFaulty
-		badWotsSig := badSig.SIG_HT.GetXMSSSignature(16).WotsSignature
+		badWotsSig := badSig.SIG_HT.GetXMSSSignature(params.D - 1).WotsSignature
 
-		if targetIdxTree != getTreeIdxFromMsg(params, badSig.R, pk, goodMessage) {
+		if targetIdxTree != getLastTreeIdxFromMsg(params, badSig.R, pk, goodMessage) {
 			continue
 		}
 
 		// try to recreate message from signature
-		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, wotsPk, params, pk.PKseed, tree)
+		success, faultyMessage := getWOTSMessageFromSignatureAndPK(badWotsSig, wotsPk, params, pk.PKseed, int(targetIdxTree))
 		if !success {
 			panic("Can't recreate message with fault from sig on target tree. This should never happen.")
 		}

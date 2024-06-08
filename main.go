@@ -6,7 +6,7 @@ import (
 )
 
 func subCommandHelp() {
-	fmt.Println("expected 'singleSubtree' or 'singleSubtreeStats' or 'parallelSubtree'")
+	fmt.Println("expected 'singleSubtree' or 'singleSubtreeStats' or 'parallelSubtree' or 'parallelSubtreeStats'")
 	os.Exit(1)
 }
 
@@ -23,6 +23,8 @@ func main() {
 		singleSubtreeStats()
 	case "parallelSubtree":
 		parallelSubtree()
+	case "parallelSubtreeStats":
+		parallelSubtreeStats()
 	default:
 		subCommandHelp()
 	}

@@ -234,7 +234,7 @@ func parallelSubtreeStats() {
 				}
 
 				fmt.Printf("%d forgery attempts required\n", forgeryAttempts)
-				appendToFile("parallelAttackStats.csv", fmt.Sprintf("%d, %d", faults, forgeryAttempts))
+				appendToFile("data/parallelAttackStats.csv", fmt.Sprintf("%d, %d", faults, forgeryAttempts))
 			}
 		}
 	}

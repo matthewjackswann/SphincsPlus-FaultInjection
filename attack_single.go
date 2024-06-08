@@ -211,7 +211,7 @@ func singleSubtreeStats() {
 			oracleInput <- nil // stop oracle thread
 
 			fmt.Printf("%d faulty signatures required\n", faultySigsRequired)
-			appendToFile("singleAttackStats.csv", fmt.Sprintf("%d", faultySigsRequired))
+			appendToFile("data/singleAttackStats.csv", fmt.Sprintf("%d", faultySigsRequired))
 		}
 	}
 }

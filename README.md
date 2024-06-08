@@ -6,7 +6,9 @@ It specifically answers the question
 > Write or modify an implementation of SPHINCS+ that can _simulate_ the fault
 described in the paper (Practical Fault Injection Attacks on SPHINCS - Aymeric Genêt, Matthias J. Kannwischer, Hervé Pelletier, and Andrew McLauchlan), and implement the processing phase.
 
-by implementing an attack, allowing an adversary to universally forge message signatures (I hope).
+By implementing this attack, adversary can universally forge message signatures.
+
+A writeup can be found on my website [SwannysCode](https://www.swannyscode.com/projects/7)
 
 This is a fork of [SPHINCSPLUS-golang](https://github.com/kasperdi/SPHINCSPLUS-golang), a pre-existing SPHINCS+ implementation in go
 
@@ -29,7 +31,7 @@ The attack works be re-using a winternitz one time signature (WOTS). By signing 
 - Once we have made a small enough signature we can sign any message with each block strictly better than the current best. This allows an adversary to create a hypertree and sign it's public key as if it was signed with $sk$. This allows an adversary to sign any message as if they were the owner of the SPHINCS+ public key (which is bad).
 
 ## Implementation
-`attack.go` contains the main script used for running the attack and `attack_helper.go` contains helper functions for the attack.
+`attack_single.go` and `attack_parallel.go` contain the main script used for running the attack and `attack_helper.go` contains helper functions for the attack.
 
 Files ending in `_fault` contain a modified version of the original code and simulating a fault occurring during encryption.
 
@@ -41,13 +43,48 @@ The function `createSigningOracle`, creates a signing oracle and returns a publi
 
 The attack can be launched by running:
 ```
-go run attack.go
+go run . <attack type>
 ```
-The program will repeatedly test faulty signatures until the user presses `ENTER` on the console.
 
-It will then try and forge a signature for a randomly created message.
+You must provide one of the following attack types:
 
-## Output
+### singleSubtree
+
+The attack will base the forgery off a single valid signature. It will attack the same subtree as the signature and discard any faulty signatures from different subtrees.
+
+The attack will continuously process faulty signatures and maintain the shortest hash chains used in the WOTS signatures. Once `ENTER` is pressed, the attack will start attempting to create a forgery. This will be faster (take less attempts) the more faulty signatures that have been processed.
+
+### singleSubtreeStats
+
+This attack is the same as in `singleSubtree` but reversed. A single forgery is made and the number  faulty signatures required before a valid forgery can be made is recorded (up to a maximum value). This is saved in a results file `singleAttackStats.csv` and repeats with a new signing oracle until `ENTER` is pressed (this might take some time as the current attack fully finishes before returning).
+
+### parallelSubtree
+
+The attack will base the forgery off multiple valid signatures. It will attack the all subtree at the same time, so no faulty signatures are wasted.
+
+First the attack processes valid signatures until a signature for each subtree has been observed. Then the attack will continuously process faulty signatures and maintain the shortest hash chains used in the WOTS signatures. Once `ENTER` is pressed, the attack will start attempting to create a forgery. This will be faster (take less attempts) the more faulty signatures that have been processed.
+
+### parallelSubtreeStats
+
+This attack is the same as in `parallelSubtree`. Faulty signatures are processed until the target amount is reached (alternating between 128, 160, 240, 320, 480 and 800). Then the number of forgery attempts made is recorded (up to a maximum value). The number of faults and forgery attempts are saved in `parallelAttackStats.csv`. The set of target faulty signatures is continuously iterated over until `ENTER` is pressed, this will finish the current set of target faults and then terminate.
+
+## Stats
+
+Graphs for both the single subtree and parallel attacks can be produced by running:
+```
+cd data
+python3 graphResults.py
+```
+
+The first graph plots the single attack results (if they exist) and is based of Fig 5. in `Practical Fault Injection Attacks on SPHINCS`. This plots the forgery success probability against the number of faulty signatures required. This is calculated using the number of forgery attempts which succeed with less than q faulty signatures.
+
+![graph1](/data/Figure_1.png)
+
+The second graph plots the parallel attack results (if they exist) and is based of Fig 6. in `Practical Fault Injection Attacks on SPHINCS`. This plots success probability against the number of forgery attempts for a preset number of faulty signatures. This is calculated using the number of forgery attempts which succeed with less than p forgery attempts, for each number of faulty signatures.
+
+![graph2](/data/Figure_2.png)
+
+## Notable functions
 
 ### faultySignAndCreateSmallestSignature
 When the program starts it signs a message and outputs the secret key used in the last layer of the hypertree. This is only debug output for showing correctness and isn't accessible during the attack.
